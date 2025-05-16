@@ -2,4 +2,3 @@ load_from:
   - python_file:
       relative_path: src/dagster_omics/definitions.py
       working_directory: src
-
