@@ -2,6 +2,10 @@ FROM python:3.12-slim
 WORKDIR /project
 COPY pyproject.toml /project/
 
-RUN pip install .
+# Install uv
+RUN pip install uv
+
+# Use uv for package installation
+RUN uv pip install --system .
 COPY src/dagster_omics/ /project/dagster_omics/
-RUN pip install -e .
+RUN uv pip install --system -e .

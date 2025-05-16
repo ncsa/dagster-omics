@@ -26,6 +26,9 @@ dev = [
     "mypy",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/dagster_omics"]
+
 [tool.black]
 line-length = 100
 target-version = ["py38"]
