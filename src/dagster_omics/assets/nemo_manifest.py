@@ -77,9 +77,26 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
         s3_client = s3.get_client()
 
         for file_to_upload in files_to_upload:
+            file_path = Path(temp_dir) / file_to_upload
+            original_path = file_path  # Keep track of original path
+            # Decompress .gz files before uploading
+            if file_to_upload.endswith('.gz'):
+                context.log.info(f"Decompressing {file_to_upload} before upload")
+                decompressed_path = decompress_gz_file(file_path, temp_dir, context)
+                file_to_upload = Path(decompressed_path).name
+                file_path = Path(decompressed_path)
+
             context.log.info(f"Uploading {file_to_upload} to {config.path_prefix}")
             key = f"{config.path_prefix}/{file_to_upload}"
-            s3_client.upload_file(Path(temp_dir) / file_to_upload, bucket, key)
+            s3_client.upload_file(file_path, bucket, key)
+            
+            # Clean up files after successful upload
+            if file_path.exists():
+                file_path.unlink()
+                context.log.info(f"Deleted decompressed file: {file_path}")
+            if original_path.exists():
+                original_path.unlink()
+                context.log.info(f"Deleted original file: {original_path}")
 
     return config
 
@@ -122,7 +139,7 @@ def download_file(config: NeMOFile, output_path: Path, context) -> str:
 
 def untar_file(file_id: str, file_path: Path, temp_dir: str, context) -> list[str]:
     """
-    Untar a file and return the paths to the untarred files. Uncompress any .gz files.
+    Untar a file and return the paths to the untarred files.
     Args:
         file_id (str): ID of the file being processed
         file_path (Path): Path to the tar file to extract
@@ -130,7 +147,7 @@ def untar_file(file_id: str, file_path: Path, temp_dir: str, context) -> list[st
         context: Dagster context for logging
 
     Returns:
-        list[str]: List of filenames that were extracted and decompressed
+        list[str]: List of filenames that were extracted
     """
     context.log.info(f"Extracting tar file {file_id}")
     with tarfile.open(file_path, "r") as tar:
@@ -139,21 +156,10 @@ def untar_file(file_id: str, file_path: Path, temp_dir: str, context) -> list[st
         # Get list of extracted files
         files_to_upload = [member.name for member in tar.getmembers() if member.isfile()]
         context.log.info(f"Extracted {len(files_to_upload)} files from {file_id}")
-
-        # Decompress .gz files
-        updated_files = []
+        
         for file_name in files_to_upload:
-            file_path = Path(temp_dir) / file_name
-            if file_name.endswith(".gz"):
-                decompressed_path = decompress_gz_file(file_path, temp_dir, context)
-                decompressed_name = Path(decompressed_path).name
-                updated_files.append(decompressed_name)
-                context.log.info(f"  - {decompressed_name} (decompressed)")
-            else:
-                updated_files.append(file_name)
-                context.log.info(f"  - {file_name}")
-
-        files_to_upload = updated_files
+            context.log.info(f"  - {file_name}")
+            
         return files_to_upload
 
 
