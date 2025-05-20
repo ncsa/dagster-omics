@@ -117,12 +117,16 @@ def download_file(config: NeMOFile, output_path: Path, context) -> str:
         total_size = int(response.headers.get('content-length', 0))
         downloaded = 0
         last_percentage = 0
+        
+        # Initialize MD5 hash
+        md5_hash = hashlib.md5()
 
-        # Download the file in chunks
+        # Download the file in chunks and calculate MD5 simultaneously
         with open(output_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=1024*1024):  # 1MB chunks
                 if chunk:
                     f.write(chunk)
+                    md5_hash.update(chunk)
                     downloaded += len(chunk)
                     # Log progress at 10% intervals
                     percentage = int((downloaded / total_size) * 100)
@@ -132,10 +136,9 @@ def download_file(config: NeMOFile, output_path: Path, context) -> str:
 
     context.log.info(f"Successfully downloaded {config.file_id}")
 
-    # Verify MD5 checksum
+    # Get the final MD5 hash
+    file_md5 = md5_hash.hexdigest()
     context.log.info(f"Verifying MD5 checksum for {config.file_id}")
-    with open(output_path, "rb") as f:
-        file_md5 = hashlib.md5(f.read()).hexdigest()
 
     if file_md5 == config.md5:
         context.log.info(f"MD5 checksum verified: {file_md5}")
