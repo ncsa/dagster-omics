@@ -55,8 +55,13 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
         s3: S3 resource for accessing NeMO data
         config: NeMOFile configuration
     """
-    # Create a temporary directory for downloads
-    with tempfile.TemporaryDirectory() as temp_dir:
+    # Create a temporary directory under SCRATCH_PATH
+    scratch_path = os.getenv("SCRATCH_PATH")
+    if not scratch_path:
+        raise ValueError("SCRATCH_PATH environment variable is not set")
+    
+    temp_dir = tempfile.mkdtemp(dir=scratch_path)
+    try:
         # Process the manifest files
         context.log.info(f"Processing file {config.file_id} for sample {config.sample_id}")
 
@@ -98,7 +103,11 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
                 original_path.unlink()
                 context.log.info(f"Deleted original file: {original_path}")
 
-    return config
+        return config
+    finally:
+        # Clean up the temporary directory
+        shutil.rmtree(temp_dir)
+        context.log.info(f"Cleaned up temporary directory: {temp_dir}")
 
 
 def download_file(config: NeMOFile, output_path: Path, context) -> str:
