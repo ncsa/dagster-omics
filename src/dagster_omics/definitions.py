@@ -4,13 +4,13 @@ Core definitions for the dagster-omics application.
 from dagster import Definitions, EnvVar
 from dagster_ncsa import S3ResourceNCSA
 
-from dagster_omics.assets.nemo_manifest import nemo_manifest
+from dagster_omics.assets.nemo_manifest import nemo_manifest, download_nemo_manifest
 from dagster_omics.sensor import nemo_manifest_sensor, nemo_manifest_job
 
 # Import assets and jobs here as they are created
 defs = Definitions(
     sensors=[nemo_manifest_sensor],
-    assets=[nemo_manifest],
+    assets=[nemo_manifest, download_nemo_manifest],
     jobs=[nemo_manifest_job],
     resources={
         "s3": S3ResourceNCSA(

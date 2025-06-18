@@ -75,7 +75,7 @@ def nemo_manifest_sensor(context: dg.SensorEvaluationContext, s3: S3ResourceNCSA
                     run_key = f"nemo_manifest_{file_id}"
 
                     # Yield a run request with configuration for this single file
-                    yield dg.RunRequest(run_key=run_key, 
+                    yield dg.RunRequest(run_key=run_key,
                                         run_config=run_config,
                                         tags={"nemo_manifest": manifest_file,
                                               "file_id": file_id,
