@@ -51,20 +51,21 @@ def download_nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
     Asset for downloading NeMO manifest files.
     """
     scratch_path = os.getenv("SCRATCH_PATH")
-    temp_dir = os.path.join(scratch_path, "nemo_manifest")
+    download_dir = os.path.join(scratch_path, "nemo_manifest")
+    os.makedirs(download_dir, exist_ok=True)
 
     context.log.info(f"Processing file {config.file_id} for sample {config.sample_id}")
 
     # Download the file
     size_gb = config.size / (1024 * 1024 * 1024)  # Convert bytes to GB
     context.log.info(f"Downloading {config.url} (size: {size_gb:.2f} GB)")
-    output_path = Path(temp_dir) / config.file_id
+    output_path = Path(download_dir) / config.file_id
     download_file(config, output_path, context)
 
     # Extract tar files if applicable
     files_to_upload = []
     if config.file_id.endswith(".tar"):
-        files_to_upload = untar_file(config.file_id, output_path, temp_dir, context)
+        files_to_upload = untar_file(config.file_id, output_path, download_dir, context)
     else:
         files_to_upload.append(config.file_id)
 
