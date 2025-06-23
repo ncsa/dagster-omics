@@ -6,6 +6,10 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
+
+import boto3
+import botocore.config
+from boto3.s3.transfer import TransferConfig
 from dagster import asset, Config
 from dagster_ncsa import S3ResourceNCSA
 import hashlib
@@ -152,13 +156,35 @@ class UploadConfig(Config):
     group_name="nemo",
 )
 def upload_file(context, s3: S3ResourceNCSA, config: UploadConfig):
-    s3_client = s3.get_client()
+    # Configure boto3 client
+    s3_config = botocore.config.Config(
+        retries={
+            'max_attempts': 10,
+            'mode': 'adaptive'
+        },
+        read_timeout=600,      # 10 minutes
+        connect_timeout=120,   # 2 minutes
+
+    )
+
+    transfer_config = TransferConfig(
+        multipart_threshold=1024 * 25,  # 25MB
+        max_concurrency=10,
+        multipart_chunksize=1024 * 25,  # 25MB
+        use_threads=True
+    )
+
+    s3_client = boto3.client('s3',
+                             aws_access_key_id=s3.aws_access_key_id,
+                             aws_secret_access_key=s3.aws_secret_access_key,
+                             endpoint_url=s3.endpoint_url,
+                             config=s3_config)
     bucket = os.getenv("DEST_BUCKET")
     file_to_upload = os.path.basename(config.src)
     key = f"{config.path_prefix}/{file_to_upload}"
 
     context.log.info(f"Uploading {config.src} to {key}")
-    s3_client.upload_file(config.src, bucket, key)
+    s3_client.upload_file(config.src, bucket, key, Config=transfer_config)
 
 
 def download_file(config: NeMOFile, output_path: Path, context) -> str:
