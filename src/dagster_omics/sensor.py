@@ -16,6 +16,7 @@ nemo_manifest_job = dg.define_asset_job(
 
 @dg.sensor(
     job=nemo_manifest_job,
+    name="nemo_manifest_sensor",
     minimum_interval_seconds=10,
 )
 def nemo_manifest_sensor(context: dg.SensorEvaluationContext, s3: S3ResourceNCSA):

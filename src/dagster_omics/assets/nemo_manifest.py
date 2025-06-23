@@ -46,37 +46,6 @@ class NeMOFile(Config):
 
 
 @asset(
-    name="download_nemo_manifest",
-    description="Download NeMO manifest files",
-    group_name="nemo",
-)
-def download_nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
-    """
-    Asset for downloading NeMO manifest files.
-    """
-    scratch_path = os.getenv("SCRATCH_PATH")
-    download_dir = os.path.join(scratch_path, "nemo_manifest")
-    os.makedirs(download_dir, exist_ok=True)
-
-    context.log.info(f"Processing file {config.file_id} for sample {config.sample_id}")
-
-    # Download the file
-    size_gb = config.size / (1024 * 1024 * 1024)  # Convert bytes to GB
-    context.log.info(f"Downloading {config.url} (size: {size_gb:.2f} GB)")
-    output_path = Path(download_dir) / config.file_id
-    download_file(config, output_path, context)
-
-    # Extract tar files if applicable
-    files_to_upload = []
-    if config.file_id.endswith(".tar"):
-        files_to_upload = untar_file(config.file_id, output_path, download_dir, context)
-    else:
-        files_to_upload.append(config.file_id)
-
-    context.log.info(f"Successfully downloaded {files_to_upload}")
-
-
-@asset(
     name="nemo_manifest",
     description="Process NeMO manifest files",
     group_name="nemo",
@@ -114,7 +83,7 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
             files_to_upload.append(config.file_id)
 
         bucket = os.getenv("DEST_BUCKET")
-        s3_client = s3.get_client()
+        s3_client = resilient_s3_client(s3)
 
         for file_to_upload in files_to_upload:
             file_path = Path(temp_dir) / file_to_upload
@@ -128,9 +97,9 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
 
             context.log.info(f"Uploading {file_to_upload} to {config.path_prefix}")
             key = f"{config.path_prefix}/{file_to_upload}"
-            s3_client.upload_file(file_path, bucket, key)
+            s3_client.upload_file(file_path, bucket, key, Config=resilient_s3_transfer_config())
 
-            # Clean up files after successful upload
+            # Clean up files after a successful upload
             if file_path.exists():
                 file_path.unlink()
                 context.log.info(f"Deleted decompressed file: {file_path}")
@@ -145,33 +114,19 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
         context.log.info(f"Cleaned up temporary directory: {temp_dir}")
 
 
-class UploadConfig(Config):
-    src: str = "/var/dagster/scratch/nemo_manifest/P65M_1_RNA/P65M_1_RNA.bam"
-    path_prefix: str = "biccn/grant/u19_huang/dulac/transcriptome/sncell/10x_multiome/mouse/processed/align"  # noqa: E501
-
-
-@asset(
-    name="upload_file",
-    description="Upload NeMO manifest files",
-    group_name="nemo",
-)
-def upload_file(context, s3: S3ResourceNCSA, config: UploadConfig):
+def resilient_s3_client(s3: S3ResourceNCSA):
+    """
+    Create a resilient S3 client that retries on errors.
+    """
     # Configure boto3 client
     s3_config = botocore.config.Config(
         retries={
             'max_attempts': 10,
             'mode': 'adaptive'
         },
-        read_timeout=600,      # 10 minutes
-        connect_timeout=120,   # 2 minutes
+        read_timeout=600,  # 10 minutes
+        connect_timeout=120,  # 2 minutes
 
-    )
-
-    transfer_config = TransferConfig(
-        multipart_threshold=1024 * 25,  # 25MB
-        max_concurrency=10,
-        multipart_chunksize=1024 * 25,  # 25MB
-        use_threads=True
     )
 
     s3_client = boto3.client('s3',
@@ -179,12 +134,27 @@ def upload_file(context, s3: S3ResourceNCSA, config: UploadConfig):
                              aws_secret_access_key=s3.aws_secret_access_key,
                              endpoint_url=s3.endpoint_url,
                              config=s3_config)
-    bucket = os.getenv("DEST_BUCKET")
-    file_to_upload = os.path.basename(config.src)
-    key = f"{config.path_prefix}/{file_to_upload}"
+    return s3_client
 
-    context.log.info(f"Uploading {config.src} to {key}")
-    s3_client.upload_file(config.src, bucket, key, Config=transfer_config)
+
+def resilient_s3_transfer_config():
+    """
+    Create a resilient S3 transfer configuration with optimized settings.
+
+    Returns:
+        TransferConfig: Configured S3 transfer settings with:
+            - 25MB multipart threshold
+            - 10 concurrent transfers
+            - 25MB chunk size
+            - Multi-threading enabled
+    """
+    transfer_config = TransferConfig(
+        multipart_threshold=1024 * 25,  # 25MB
+        max_concurrency=10,
+        multipart_chunksize=1024 * 25,  # 25MB
+        use_threads=True
+    )
+    return transfer_config
 
 
 def download_file(config: NeMOFile, output_path: Path, context) -> str:
