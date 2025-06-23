@@ -141,6 +141,26 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
         context.log.info(f"Cleaned up temporary directory: {temp_dir}")
 
 
+class UploadConfig(Config):
+    src: str = "/var/dagster/scratch/nemo_manifest/P65M_1_RNA/P65M_1_RNA.bam"
+    path_prefix: str = "biccn/grant/u19_huang/dulac/transcriptome/sncell/10x_multiome/mouse/processed/align"  # noqa: E501
+
+
+@asset(
+    name="upload_file",
+    description="Upload NeMO manifest files",
+    group_name="nemo",
+)
+def upload_file(context, s3: S3ResourceNCSA, config: UploadConfig):
+    s3_client = s3.get_client()
+    bucket = os.getenv("DEST_BUCKET")
+    file_to_upload = os.path.basename(config.src)
+    key = f"{config.path_prefix}/{file_to_upload}"
+
+    context.log.info(f"Uploading {config.src} to {key}")
+    s3_client.upload_file(config.src, bucket, key)
+
+
 def download_file(config: NeMOFile, output_path: Path, context) -> str:
     max_retries = 3
     timeout = (30, 3600 * 2)  # (connect timeout, read timeout) in seconds
