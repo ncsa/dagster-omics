@@ -159,7 +159,7 @@ def resilient_s3_transfer_config():
 
 def download_file(config: NeMOFile, output_path: Path, context) -> str:
     max_retries = 3
-    timeout = (30, 3600 * 2)  # (connect timeout, read timeout) in seconds
+    timeout = (120, 3600 * 2)  # (connect timeout, read timeout) in seconds
     chunk_size = 1024 * 1024  # 1MB chunks
 
     for attempt in range(max_retries):
