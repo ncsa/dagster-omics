@@ -46,6 +46,37 @@ class NeMOFile(Config):
 
 
 @asset(
+    name="download_nemo_manifest",
+    description="Download NeMO manifest files",
+    group_name="nemo",
+)
+def download_nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
+    """
+    Asset for downloading NeMO manifest files.
+    """
+    scratch_path = os.getenv("SCRATCH_PATH")
+    download_dir = os.path.join(scratch_path, "nemo_manifest")
+    os.makedirs(download_dir, exist_ok=True)
+
+    context.log.info(f"Processing file {config.file_id} for sample {config.sample_id}")
+
+    # Download the file
+    size_gb = config.size / (1024 * 1024 * 1024)  # Convert bytes to GB
+    context.log.info(f"Downloading {config.url} (size: {size_gb:.2f} GB)")
+    output_path = Path(download_dir) / config.file_id
+    download_file(config, output_path, context)
+
+    # Extract tar files if applicable
+    files_to_upload = []
+    if config.file_id.endswith(".tar"):
+        files_to_upload = untar_file(config.file_id, output_path, download_dir, context)
+    else:
+        files_to_upload.append(config.file_id)
+
+    context.log.info(f"Successfully downloaded {files_to_upload}")
+
+
+@asset(
     name="nemo_manifest",
     description="Process NeMO manifest files",
     group_name="nemo",
@@ -112,6 +143,38 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
         # Clean up the temporary directory
         shutil.rmtree(temp_dir)
         context.log.info(f"Cleaned up temporary directory: {temp_dir}")
+
+
+class UploadConfig(Config):
+    src: str = "/var/dagster/scratch/nemo_manifest/P65M_1_RNA/P65M_1_RNA.bam"
+    path_prefix: str = "biccn/grant/u19_huang/dulac/transcriptome/sncell/10x_multiome/mouse/processed/align"  # noqa: E501
+
+
+@asset(
+    name="upload_file",
+    description="Upload NeMO manifest files",
+    group_name="nemo",
+)
+def upload_file(context, s3: S3ResourceNCSA, config: UploadConfig):
+    s3_client = resilient_s3_client(s3)
+    bucket = os.getenv("DEST_BUCKET")
+    file_to_upload = os.path.basename(config.src)
+    key = f"{config.path_prefix}/{file_to_upload}"
+
+    def human_readable_size(size):
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size < 1024.0:
+                return f"{size:.2f} {unit}"
+            size /= 1024.0
+        return f"{size:.2f} PB"
+
+    size_bytes = Path(config.src).stat().st_size
+
+    context.log.info(f"Uploading {config.src} ({human_readable_size(size_bytes)} to {key}")
+
+    transfer_config = resilient_s3_transfer_config()
+    # Upload the file
+    upload_with_retry(s3_client, config.src, bucket, key, transfer_config)
 
 
 def resilient_s3_client(s3: S3ResourceNCSA):
