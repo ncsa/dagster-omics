@@ -97,7 +97,7 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
 
             context.log.info(f"Uploading {file_to_upload} to {config.path_prefix}")
             key = f"{config.path_prefix}/{file_to_upload}"
-            s3_client.upload_file(file_path, bucket, key, Config=resilient_s3_transfer_config())
+            upload_with_retry(s3_client, file_path, bucket, key, resilient_s3_transfer_config())
 
             # Clean up files after a successful upload
             if file_path.exists():
@@ -151,10 +151,22 @@ def resilient_s3_transfer_config():
     transfer_config = TransferConfig(
         multipart_threshold=1024 * 25,  # 25MB
         max_concurrency=10,
-        multipart_chunksize=1024 * 25,  # 25MB
+        multipart_chunksize=1024 * 100,  # Increase to 100MB
         use_threads=True
     )
     return transfer_config
+
+
+def upload_with_retry(s3_client, file_path, bucket, key, config, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            s3_client.upload_file(file_path, bucket, key, Config=config)
+            return
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == 'InvalidPart' and attempt < max_retries - 1:
+                print(f"Upload attempt {attempt + 1} failed, retrying...")
+                continue
+            raise
 
 
 def download_file(config: NeMOFile, output_path: Path, context) -> str:
