@@ -118,13 +118,6 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
 
         for file_to_upload in files_to_upload:
             file_path = Path(temp_dir) / file_to_upload
-            original_path = file_path  # Keep track of original path
-            # Decompress .gz files before uploading
-            if file_to_upload.endswith('.gz'):
-                context.log.info(f"Decompressing {file_to_upload} before upload")
-                decompressed_path = decompress_gz_file(file_path, temp_dir, context)
-                file_to_upload = Path(decompressed_path).name
-                file_path = Path(decompressed_path)
 
             context.log.info(f"Uploading {file_to_upload} to {config.path_prefix}")
             key = f"{config.path_prefix}/{file_to_upload}"
@@ -134,9 +127,6 @@ def nemo_manifest(context, s3: S3ResourceNCSA, config: NeMOFile):
             if file_path.exists():
                 file_path.unlink()
                 context.log.info(f"Deleted decompressed file: {file_path}")
-            if original_path.exists():
-                original_path.unlink()
-                context.log.info(f"Deleted original file: {original_path}")
 
         return config
     finally:
